@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Room Reservation System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold mb-4 text-center">Hotel Room Reservation System</h1>
+        
+        <!-- Input and Buttons -->
+        <div class="mb-4 flex justify-center space-x-4">
+            <div>
+                <label for="numRooms" class="block text-sm font-medium text-gray-700">Number of Rooms (1-5):</label>
+                <input type="number" id="numRooms" min="1" max="5" value="1" class="mt-1 p-2 border rounded w-20">
+            </div>
+            <button onclick="bookRooms()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Book Rooms</button>
+            <button onclick="generateRandomOccupancy()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Random Occupancy</button>
+            <button onclick="resetHotel()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Reset</button>
+        </div>
+
+        <!-- Hotel Visualization -->
+        <div id="hotelLayout" class="grid gap-4">
+            <!-- Floors will be dynamically generated here -->
+        </div>
+
+        <!-- Booking Result -->
+        <div id="bookingResult" class="mt-4 text-center"></div>
+    </div>
+
+    <script>
+        // Hotel configuration
+        const hotel = {
+            floors: Array(9).fill().map((_, i) => ({
+                floor: i + 1,
+                rooms: Array(10).fill().map((_, j) => ({
+                    number: (i + 1) * 100 + j + 1,
+                    occupied: false
+                }))
+            })).concat([{
+                floor: 10,
+                rooms: Array(7).fill().map((_, j) => ({
+                    number: 1001 + j,
+                    occupied: false
+                }))
+            }])
+        };
+
+        // Initialize hotel layout
+        function renderHotel() {
+            const layout = document.getElementById('hotelLayout');
+            layout.innerHTML = '';
+            hotel.floors.forEach(floor => {
+                const floorDiv = document.createElement('div');
+                floorDiv.className = 'border p-4 bg-white rounded shadow';
+                floorDiv.innerHTML = `
+                    <h2 class="text-xl font-semibold mb-2">Floor ${floor.floor}</h2>
+                    <div class="flex space-x-2">
+                        <span class="text-gray-500">Stairs/Lift</span>
+                        ${floor.rooms.map(room => `
+                            <div class="${room.occupied ? 'bg-red-300' : 'bg-green-300'} px-2 py-1 rounded text-center">
+                                ${room.number}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                layout.appendChild(floorDiv);
+            });
+        }
+
+        // Calculate travel time between two rooms
+        function calculateTravelTime(room1, room2) {
+            const floor1 = Math.floor(room1 / 100);
+            const floor2 = Math.floor(room2 / 100);
+            const roomNum1 = room1 % 100;
+            const roomNum2 = room2 % 100;
+            const verticalTime = Math.abs(floor1 - floor2) * 2; // 2 minutes per floor
+            const horizontalTime = floor1 === floor2 ? Math.abs(roomNum1 - roomNum2) : 0; // 1 minute per room
+            return verticalTime + horizontalTime;
+        }
+
+        // Book rooms
+        function bookRooms() {
+            const numRooms = parseInt(document.getElementById('numRooms').value);
+            if (numRooms < 1 || numRooms > 5) {
+                alert('Please enter a number between 1 and 5');
+                return;
+            }
+
+            // Find best room combination
+            let bestRooms = [];
+            let minTravelTime = Infinity;
+
+            // Try each floor for same-floor booking
+            for (let floor of hotel.floors) {
+                const availableRooms = floor.rooms.filter(room => !room.occupied);
+                if (availableRooms.length >= numRooms) {
+                    // Sort by room number to ensure sequential selection
+                    availableRooms.sort((a, b) => a.number - b.number);
+                    const selectedRooms = availableRooms.slice(0, numRooms);
+                    const travelTime = calculateTravelTime(
+                        selectedRooms[0].number,
+                        selectedRooms[selectedRooms.length - 1].number
+                    );
+                    if (travelTime < minTravelTime) {
+                        minTravelTime = travelTime;
+                        bestRooms = selectedRooms;
+                    }
+                }
+            }
+
+            // If not enough rooms on one floor, try across floors
+            if (bestRooms.length === 0) {
+                const allAvailable = hotel.floors.flatMap(floor => 
+                    floor.rooms.filter(room => !room.occupied).map(room => ({
+                        ...room,
+                        floor: floor.floor
+                    }))
+                );
+                if (allAvailable.length < numRooms) {
+                    document.getElementById('bookingResult').innerHTML = '<p class="text-red-500">Not enough rooms available!</p>';
+                    return;
+                }
+
+                // Try all combinations
+                for (let i = 0; i < allAvailable.length; i++) {
+                    for (let j = i + 1; j < allAvailable.length; j++) {
+                        const selected = allAvailable.slice(i, i + numRooms);
+                        if (selected.length === numRooms) {
+                            const travelTime = calculateTravelTime(
+                                selected[0].number,
+                                selected[selected.length - 1].number
+                            );
+                            if (travelTime < minTravelTime) {
+                                minTravelTime = travelTime;
+                                bestRooms = selected;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Book the rooms
+            bestRooms.forEach(room => {
+                const floor = hotel.floors.find(f => f.floor === Math.floor(room.number / 100));
+                const targetRoom = floor.rooms.find(r => r.number === room.number);
+                targetRoom.occupied = true;
+            });
+
+            // Display result
+            document.getElementById('bookingResult').innerHTML = `
+                <p class="text-green-600">Booked rooms: ${bestRooms.map(r => r.number).join(', ')}</p>
+                <p>Total travel time: ${minTravelTime} minutes</p>
+            `;
+            renderHotel();
+        }
+
+        // Generate random occupancy
+        function generateRandomOccupancy() {
+            hotel.floors.forEach(floor => {
+                floor.rooms.forEach(room => {
+                    room.occupied = Math.random() > 0.5;
+                });
+            });
+            document.getElementById('bookingResult').innerHTML = '<p class="text-blue-500">Random occupancy generated!</p>';
+            renderHotel();
+        }
+
+        // Reset hotel
+        function resetHotel() {
+            hotel.floors.forEach(floor => {
+                floor.rooms.forEach(room => {
+                    room.occupied = false;
+                });
+            });
+            document.getElementById('bookingResult').innerHTML = '<p class="text-blue-500">Hotel reset!</p>';
+            renderHotel();
+        }
+
+        // Initial render
+        renderHotel();
+    </script>
+</body>
+</html>
